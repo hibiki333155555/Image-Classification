@@ -6,9 +6,9 @@ import seaborn as sns
 import os
 import warnings
 warnings.filterwarnings('ignore')
-from sklearn.model_selection import train_test_split
 import glob
 from PIL import Image
+import tqdm
 
 #import pytorch libraries for image classification
 import torch
@@ -18,16 +18,17 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torchvision import models
 
+# set config class
+class Cfg():
+    def __init__(self):
+        self.batch_size = 32
+        self.num_workers = 2
+        self.num_epochs = 10
+        self.lr = 0.001
+        self.momentum = 0.9
+        self.seed = 1
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-# function to load VGG16 model
-def load_vgg16_model():
-    model = models.vgg16(pretrained=True)
-    for param in model.parameters():
-        param.requires_grad = False
-    model.classifier[6] = nn.Linear(4096, 5)
-
-    return model
 
     
 # class to load input image
@@ -69,6 +70,7 @@ def make_datapath_list(phase='train'):
 
     return path_list
 
+
 # make dataset class for train and validation
 class UDataset(Dataset):
     def __init__(self, file_list, transform=None, phase='train'):
@@ -105,7 +107,6 @@ class UDataset(Dataset):
         return img_transformed, label
     
 
-
 # make Dataloader for train and validation
 def make_dataloader(phase='train'):
     # make path list
@@ -121,5 +122,88 @@ def make_dataloader(phase='train'):
     dataset = Dataset(file_list=path_list, transform=ImageTransform(224, mean, std), phase=phase) 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-    return dataloader
+    dataloaders_dict = {"train": dataloader, "val": dataloader}
+
+    return dataloaders_dict
+
+
+# function to load VGG16 model
+def load_vgg16_model():
+    model = models.vgg16(pretrained=True)
+    for param in model.parameters():
+        param.requires_grad = False
+    model.classifier[6] = nn.Linear(4096, 5)
+
+    return model
+
+# function to load ResNet50 model
+def load_resnet50_model():
+    model = models.resnet50(pretrained=True)
+    for param in model.parameters():
+        param.requires_grad = False
+    model.fc = nn.Linear(2048, 5)
+
+    return model
+
+
+# train model
+def train_model(model, dataloaders_dict, criterion, optimizer, num_epochs):
+    # initialize
+    cfg = Cfg()
+    device = cfg.device
+    print("device:", device)
+
+    torch.backends.cudnn.benchmark = True
+
+    # initialize
+    model = load_vgg16_model() 
+    model.to(device)
+    dataloaders_dict = make_dataloader()
+
+    # train
+    for epoch in range(num_epochs):
+        print('Epoch {}/{}'.format(epoch+1, num_epochs))
+        print('-------------')
+
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                model.train()
+            else:
+                model.eval()
+
+            epoch_loss = 0.0
+            epoch_corrects = 0
+
+            if (epoch == 0) and (phase == 'train'):
+                continue
+
+            for inputs, labels in tqdm(dataloaders_dict[phase]):
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+
+                optimizer.zero_grad()
+
+                with torch.set_grad_enabled(phase == 'train'):
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    _, preds = torch.max(outputs, 1)
+
+                    if phase == 'train':
+                        loss.backward()
+                        optimizer.step()
+
+                    epoch_loss += loss.item() * inputs.size(0)
+                    epoch_corrects += torch.sum(preds == labels.data)
+
+            epoch_loss = epoch_loss / len(dataloaders_dict[phase].dataset)
+            epoch_acc = epoch_corrects.double() / len(dataloaders_dict[phase].dataset)
+
+            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
+
+    # save model
+    save_path = './weights/weights.pth'
+    torch.save(model.state_dict(), save_path)
+
+
+    return model
 
