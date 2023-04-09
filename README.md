@@ -1,1 +1,2 @@
 # Image-Classification
+ベンチャー体験工房の分類タスクのための前準備

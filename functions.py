@@ -1,4 +1,4 @@
-#import ML libraries
+# import ML libraries
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,7 +10,7 @@ import glob
 from PIL import Image
 import tqdm
 
-#import pytorch libraries for image classification
+# import pytorch libraries for image classification
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -132,7 +132,9 @@ def load_vgg16_model():
     model = models.vgg16(pretrained=True)
     for param in model.parameters():
         param.requires_grad = False
+    
     model.classifier[6] = nn.Linear(4096, 5)
+    # 転移学習の場合、最後の層の重みだけ更新するので勾配計算は最後の層だけ可能な状態にしておく
 
     return model
 
@@ -152,15 +154,11 @@ def train_model(model, dataloaders_dict, criterion, optimizer, num_epochs):
     cfg = Cfg()
     device = cfg.device
     print("device:", device)
-
     torch.backends.cudnn.benchmark = True
 
-    # initialize
-    model = load_vgg16_model() 
     model.to(device)
-    dataloaders_dict = make_dataloader()
 
-    # train
+    # train and test
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch+1, num_epochs))
         print('-------------')
