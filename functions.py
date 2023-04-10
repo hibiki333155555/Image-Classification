@@ -135,6 +135,9 @@ def load_vgg16_model():
     
     model.classifier[6] = nn.Linear(4096, 5)
     # 転移学習の場合、最後の層の重みだけ更新するので勾配計算は最後の層だけ可能な状態にしておく
+    for param in model.classifier[6].parameters():
+        param.requires_grad = True
+    
 
     return model
 
